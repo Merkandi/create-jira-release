@@ -1,15 +1,20 @@
 name: "Jira Release Web Hook"
 description: "Creates a new Jira release and assigns all relevant issues to it."
+
 inputs:
   jira-project-key:
     description: "Jira project identifier"
     required: true
   jira-automation-webhook:
-    description: "Jira automation webhook url"
+    description: "Jira automation webhook URL"
+    required: true
+  jira-webhook-token:
+    description: "Secret token for Jira Automation webhook (X-Automation-Webhook-Token)"
     required: true
   build-version:
     description: "Version identifier"
     required: true
+
 runs:
   using: "composite"
   steps:
@@ -29,9 +34,21 @@ runs:
           sed 's/^\|$/"/g' | paste -sd , - | awk '{print "RELATED_JIRA_ISSUES="$0}' >> $GITHUB_ENV
       shell: bash
 
-    - name: Create json and invoke webhook
+    - name: Create json and invoke webhook with token
       run: |
-        $json = ConvertTo-Json @{issues = @(${{ env.RELATED_JIRA_ISSUES }}); data = @{version = "${{ inputs.build-version }}"; projectName = "${{ inputs.jira-project-key }}"}}
+        $json = ConvertTo-Json @{
+          issues = @(${{ env.RELATED_JIRA_ISSUES }});
+          data = @{
+            version = "${{ inputs.build-version }}";
+            projectName = "${{ inputs.jira-project-key }}"
+          }
+        }
+
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-RestMethod ${{ inputs.jira-automation-webhook }} -Method Post -Body $json -ContentType "application/json"
+
+        Invoke-RestMethod -Uri "${{ inputs.jira-automation-webhook }}" `
+                          -Method Post `
+                          -Headers @{ "X-Automation-Webhook-Token" = "${{ inputs.jira-webhook-token }}" } `
+                          -Body $json `
+                          -ContentType "application/json"
       shell: pwsh
